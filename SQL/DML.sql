@@ -4,6 +4,7 @@ INSERT INTO Users (username, password, role) VALUES
 ('member2', 'password2', 'member'),
 ('trainer1', 'password1', 'trainer'),
 ('trainer2', 'password2', 'trainer'),
+('trainer3', 'password3', 'trainer'),
 ('admin', 'admin', 'admin');
 
 -- Insert sample data into Members table
@@ -14,7 +15,8 @@ INSERT INTO Members (username, full_name, email, phone_number, date_of_birth, fi
 -- Insert sample data into Trainers table
 INSERT INTO Trainers (username, full_name, email, phone_number, date_of_birth) VALUES
 ('trainer1', 'Michael Johnson', 'michael@example.com', '1112223333', '1980-10-20'),
-('trainer2', 'Emily Davis', 'emily@example.com', '4445556666', '1995-03-12');
+('trainer2', 'Emily Davis', 'emily@example.com', '4445556666', '1995-03-12'),
+('trainer3', 'Dean Robinson', 'dean@example.com', '1421127654', '1999-06-02');
 
 -- Insert sample data into PersonalTrainingSessions table
 INSERT INTO PersonalTrainingSessions (member_id, trainer_id, session_date, session_time) VALUES

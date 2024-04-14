@@ -3,44 +3,49 @@ from getpass import getpass
 
 def connect_to_db():
     try:
-        conn = psycopg2.connect(host = "localhost", dbname="club_management_system", user="postgres", password ="141203", port = 5432)
+        conn = psycopg2.connect(host = "localhost", dbname="club_management", user="postgres", password ="141203", port = 5432)
         return conn
     except psycopg2.Error as e:
         print("Error connecting to database:", e)
 
 def login_user():
-    # Get user input
-    username = input("Enter username: ")
-    password = getpass("Enter password: ")
+    login_option = input("Do you want to (L)ogin or (R)egister? ").upper()
 
-    conn = connect_to_db()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            # Retrieve password from the database
-            cursor.execute("""
-                SELECT password, role
-                FROM Users
-                WHERE username = %s
-            """, (username,))
-            stored_data = cursor.fetchone()
-            if stored_data:
-                # Compare passwords
-                if password == stored_data[0]:
-                    print("Login successful.")
-                    return username, stored_data[1]
+    if login_option == 'L':
+        username = input("Enter username: ")
+        password = getpass("Enter password: ")
+
+        conn = connect_to_db()
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT password, role
+                    FROM Users
+                    WHERE username = %s
+                """, (username,))
+                stored_data = cursor.fetchone()
+                if stored_data:
+                    if password == stored_data[0]:
+                        print("Login successful.")
+                        return username, stored_data[1]
+                    else:
+                        print("Invalid username or password.")
+                        return None, None
                 else:
-                    print("Invalid username or password.")
+                    print("User not found.")
                     return None, None
-            else:
-                print("User not found.")
-                return None, None
-        except psycopg2.Error as e:
-            print("Error logging in:", e)
-        finally:
-            cursor.close()
-            conn.close()
-
+            except psycopg2.Error as e:
+                print("Error logging in:", e)
+            finally:
+                cursor.close()
+                conn.close()
+    elif login_option == 'R':
+        register_user()
+        return None, None
+    else:
+        print("Invalid option.")
+        return None, None
 
 def register_user():
     # Get user input
@@ -64,12 +69,37 @@ def register_user():
                 INSERT INTO Users (username, password, role)
                 VALUES (%s, %s, %s)
             """, (username, password, role))
+            
             # Insert into Members or Trainers table based on role
             if role == "member":
                 cursor.execute("""
                     INSERT INTO Members (username, full_name, email, phone_number, date_of_birth, fitness_goal, height, weight)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (username, full_name, email, phone_number, date_of_birth, fitness_goal, height, weight))
+                
+                # Prompt the member to choose between personal or group fitness session
+                while True:
+                    session_choice = input("Choose session type: (P)ersonal / (G)roup / (M)ain Menu: ").upper()
+                    if session_choice == "P":
+                        schedule_personal_training(username)
+                        bill_amount = 75  # Personal training session fee
+                        break
+                    elif session_choice == "G":
+                        schedule_group_fitness(username)
+                        bill_amount = 50  # Group fitness session fee
+                        break
+                    elif session_choice == "M":
+                        print("Returning to main menu.")
+                        return
+                    else:
+                        print("Invalid choice.")
+                
+                # Generate a bill for the member
+                cursor.execute("""
+                    INSERT INTO Billing (member_id, amount, payment_status)
+                    VALUES ((SELECT member_id FROM Members WHERE username = %s), %s, TRUE)
+                """, (username, bill_amount))
+                
             elif role == "trainer":
                 cursor.execute("""
                     INSERT INTO Trainers (username, full_name, email, phone_number, date_of_birth)
@@ -160,9 +190,19 @@ def schedule_personal_training(username):
                 print("Time:", row[3])
                 print()
             
-            if sessions_data:
-                option = input("Do you want to (R)eschedule or (C)ancel a session? (R/C): ").upper()
-                if option == 'R':
+            option = input("Do you want to (R)egister a new session, (T)o reschedule, or (C)ancel a session? (R/T/C): ").upper()
+            if option == 'R':
+                trainer_id = input("Enter Trainer ID: ")
+                session_date = input("Enter session date (YYYY-MM-DD): ")
+                session_time = input("Enter session time (HH:MM): ")
+                cursor.execute("""
+                    INSERT INTO PersonalTrainingSessions (member_id, trainer_id, session_date, session_time)
+                    VALUES ((SELECT member_id FROM Members WHERE username = %s), %s, %s, %s)
+                """, (username, trainer_id, session_date, session_time))
+                conn.commit()
+                print("Personal training session registered successfully.")
+            elif option == 'T':
+                if sessions_data:
                     session_id = int(input("Enter Session ID to reschedule: "))
                     new_date = input("Enter new session date (YYYY-MM-DD): ")
                     new_time = input("Enter new session time (HH:MM): ")
@@ -173,7 +213,10 @@ def schedule_personal_training(username):
                     """, (new_date, new_time, session_id))
                     conn.commit()
                     print("Personal training session rescheduled successfully.")
-                elif option == 'C':
+                else:
+                    print("You have no scheduled personal training sessions to reschedule.")
+            elif option == 'C':
+                if sessions_data:
                     session_id = int(input("Enter Session ID to cancel: "))
                     cursor.execute("""
                         DELETE FROM PersonalTrainingSessions
@@ -182,15 +225,15 @@ def schedule_personal_training(username):
                     conn.commit()
                     print("Personal training session canceled successfully.")
                 else:
-                    print("Invalid option.")
+                    print("You have no scheduled personal training sessions to cancel.")
             else:
-                print("You have no scheduled personal training sessions.")
+                print("Invalid option.")
+                
         except psycopg2.Error as e:
             print("Error scheduling personal training session:", e)
         finally:
             cursor.close()
             conn.close()
-
 
 # Scheduling group fitness classes
 def schedule_group_fitness(username):
@@ -211,13 +254,14 @@ def schedule_group_fitness(username):
                 print("Time:", row[3])
                 print()
             
-            class_id = int(input("Enter Class ID: "))
+            class_id = int(input("Enter Class ID to register: "))
             cursor.execute("""
                 INSERT INTO PersonalTrainingSessions (member_id, class_id, session_date, session_time)
                 VALUES ((SELECT member_id FROM Members WHERE username = %s), %s, CURRENT_DATE, CURRENT_TIME)
             """, (username, class_id))
             conn.commit()
-            print("Group fitness class scheduled successfully.")
+            print("Group fitness class registered successfully.")
+                
         except psycopg2.Error as e:
             print("Error scheduling group fitness class:", e)
         finally:
@@ -269,7 +313,6 @@ def manage_room_bookings():
         finally:
             cursor.close()
             conn.close()
-
 
 # Administrative staff to monitor equipment maintenance
 def monitor_equipment_maintenance():
@@ -341,7 +384,6 @@ def update_class_schedule():
             cursor.close()
             conn.close()
 
-
 # Billing and payment processing
 def process_billing(username):
     conn = connect_to_db()
@@ -378,7 +420,6 @@ def process_billing(username):
         finally:
             cursor.close()
             conn.close()
-
 
 # Trainers to manage their schedules
 def manage_trainer_schedule(trainer_username):
@@ -434,18 +475,13 @@ def view_member_profile(member_username):
             cursor.close()
             conn.close()
 
-
 def main():
     print("Welcome to the Health and Fitness Club Management System!")
 
     while True:
-        # Login or register
         username, role = login_user()
         if not username or not role:
-            register_option = input("No existing account found. Do you want to register? (yes/no): ")
-            if register_option.lower() == "yes":
-                register_user()
-            continue  # Retry login or registration if credentials are invalid or registration was declined
+            continue
 
         print(f"Welcome, {username}!")
 
